@@ -26,6 +26,7 @@ Repo-ul contine doar scriptul de restaurare, fara secrete. Arhiva cu programele 
    maxim 7 zile). Daca agentul nu stie ce sa faca, spune-i:
    *ruleaza `sh /volume1/agents/_shared/bin/rpi4-link.sh 12` si da-mi comanda*.
    Pentru o arhiva mai veche decat ultima: *linkul pentru arhiva din YYYYMMDD* (se pastreaza ultimele 6, saptamanal).
+   Alternativa fara Slack: arhiva de pe un stick USB, vezi sectiunea [Fara Slack: arhiva de pe stick](#fara-slack-arhiva-de-pe-stick).
 4. **Conecteaza-te** la Pi (`ssh pi@rpi4.local` sau tastatura + monitor, Terminal) si **lipeste comanda**:
 
    ```bash
@@ -43,9 +44,32 @@ Repo-ul contine doar scriptul de restaurare, fara secrete. Arhiva cu programele 
 
    Muzica se sincronizeaza singura din R2 dupa repornire (poate dura).
 
+## Fara Slack: arhiva de pe stick
+
+Daca nu ai acces la Slack, poti folosi arhiva direct dintr-un fisier, de pe un stick USB:
+
+1. Pe alt calculator, intra pe dash.cloudflare.com → **R2** → bucketul `biserica-transmisiuni`
+   → folderul `backup-rpi4/`.
+2. Descarca `rpi4-setari-ultima.tar.zst` si, optional, `rpi4-setari-ultima.tar.zst.sha256`
+   (pastreaza-le in acelasi folder pe stick; daca fisierul `.sha256` exista, scriptul verifica singur arhiva).
+3. Copiaza fisierele pe un stick USB si baga stickul in Pi (desktopul il monteaza automat sub
+   `/media/pi/<NUME>`; daca nu stii numele, ruleaza `ls /media/pi/`).
+4. Ruleaza (pasii 1 si 2 de mai sus raman la fel; aici nu mai ai nevoie de link):
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/rubikmm/rpi4-restaurare/main/restaureaza.sh | sudo bash -s -- '/media/pi/NUME-STICK/rpi4-setari-ultima.tar.zst'
+   ```
+
+   (Calea intre ghilimele simple, mai ales daca numele stickului are spatii. Pe Pi, `ls /media/pi/` arata numele.)
+
+Arhivele mai vechi saptamanale se numesc `rpi4-setari-YYYYMMDD.tar.zst` (se pastreaza ultimele 6), in acelasi folder.
+
+**Atentie:** arhiva contine secrete (parole Wi-Fi, chei). **Sterge fisierele de pe stick** dupa restaurare.
+Scriptul nu modifica si nu sterge fisierul de pe stick; il citeste direct de acolo.
+
 ## Optiuni
 
-- `--fara-repornire` (inaintea linkului): nu reporneste la final.
+- `--fara-repornire` (inaintea linkului sau a caii fisierului): nu reporneste la final.
 - Scriptul poate fi rulat din nou in siguranta (idempotent). Jurnal: `/var/log/rpi4-restaurare.log`.
 - Linkul expirat (eroare la descarcare): cere altul pe Slack.
 

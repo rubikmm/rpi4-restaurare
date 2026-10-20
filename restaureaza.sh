@@ -1,11 +1,16 @@
 #!/bin/bash
 # restaureaza.sh - restaureaza programele si setarile Raspberry Pi-ului bisericii (rpi4) pe un Raspberry Pi OS proaspat
 # (Raspberry Pi OS 64-bit CU DESKTOP, Debian 12 bookworm = in Imager "Raspberry Pi OS (Legacy, 64-bit)").
-# Fara secrete in acest script: arhiva privata se descarca printr-un link temporar semnat, dat ca argument.
+# Fara secrete in acest script: arhiva privata se descarca printr-un link temporar semnat, dat ca argument,
+# sau se foloseste direct dintr-un fisier local (ex. de pe un stick USB), fara Slack.
 #
-# Folosire:
+# Folosire (varianta 1, link primit pe Slack):
 #   curl -fsSL https://raw.githubusercontent.com/rubikmm/rpi4-restaurare/main/restaureaza.sh \
 #     | sudo bash -s -- [--fara-repornire] 'LINK' [SHA256]
+# Folosire (varianta 2, fisier local, ex. stick USB; SHA256 optional - altfel se foloseste fisierul
+# vecin 'FISIER.sha256' daca exista, iar daca nu exista se da doar un avertisment):
+#   curl -fsSL https://raw.githubusercontent.com/rubikmm/rpi4-restaurare/main/restaureaza.sh \
+#     | sudo bash -s -- [--fara-repornire] /media/pi/NUME-STICK/rpi4-setari-ultima.tar.zst [SHA256]
 #
 # Se poate rula de mai multe ori (idempotent). Jurnal: /var/log/rpi4-restaurare.log
 # Tot scriptul e in functia main, apelata pe ultimul rand: o descarcare intrerupta nu executa nimic pe jumatate.
@@ -25,7 +30,7 @@ main() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --fara-repornire) REBOOT=0 ;;
-      -h|--help) echo "Folosire: restaureaza.sh [--fara-repornire] 'LINK' [SHA256]"; return 0 ;;
+      -h|--help) echo "Folosire: restaureaza.sh [--fara-repornire] 'LINK' | /cale/spre/arhiva.tar.zst [SHA256]"; return 0 ;;
       -*) echo "Optiune necunoscuta: $1"; return 2 ;;
       *) if [ -z "$URL" ]; then URL="$1"; elif [ -z "$SHA" ]; then SHA="$1"; fi ;;
     esac
@@ -42,8 +47,18 @@ main() {
 
   say "=== Restaurare rpi4 ==="
   # ---------- 0. verificari ----------
-  [ -n "$URL" ] || die "lipseste linkul. Cere pe Slack agentului linkul de restaurare."
-  case "$URL" in https://*) ;; *) die "linkul trebuie sa inceapa cu https:// (pune-l intre ghilimele simple)." ;; esac
+  local LOCAL=""
+  [ -n "$URL" ] || die "lipseste linkul sau fisierul cu arhiva. Ai doua variante:
+       1) link primit pe Slack: ... | sudo bash -s -- 'LINK' SHA256
+       2) fisier cu arhiva (descarcat din Cloudflare dashboard, de pe un stick USB):
+          ... | sudo bash -s -- /media/pi/NUME-STICK/rpi4-setari-ultima.tar.zst"
+  case "$URL" in
+    https://*) ;;
+    *) if [ -f "$URL" ]; then LOCAL="$URL"; URL=""
+       else die "'$URL' nu e nici link https:// (pune-l intre ghilimele simple), nici fisier existent.
+       Daca e fisier pe stick: nu l-am gasit. Cauta stickul cu: ls /media/pi/  (apoi ls /media/pi/NUME-STICK/)."
+       fi ;;
+  esac
   if [ -n "$SHA" ]; then
     SHA=$(echo "$SHA" | tr 'A-F' 'a-f')
     [[ "$SHA" =~ ^[0-9a-f]{64}$ ]] || die "suma sha256 data nu arata bine (trebuie 64 de caractere 0-9 a-f)."
@@ -83,15 +98,28 @@ main() {
     apt-get "${APTO[@]}" update -qq || warn "apt-get update a esuat"
     apt-get "${APTO[@]}" install -y -qq curl zstd ca-certificates || die "nu pot instala curl/zstd."
   fi
-  say "2/8 Descarc arhiva (cu reincercari)..."
-  local n ok=0
-  for n in 1 2 3 4 5; do
-    rm -f "$A"
-    if curl -fL -sS --retry 3 --retry-delay 5 --connect-timeout 30 -o "$A" "$URL"; then ok=1; break; fi
-    warn "descarcarea a esuat (incercarea $n/5)"; sleep 10
-  done
-  [ "$ok" = 1 ] || die "nu am putut descarca arhiva. Linkul poate fi expirat: cere unul nou pe Slack."
-  say "    descarcat: $(( $(stat -c %s "$A") / 1024 / 1024 )) MB"
+  if [ -n "$LOCAL" ]; then
+    # fisier local: se citeste direct de unde e (nu se copiaza, nu se sterge; cleanup-ul atinge doar $R_WORK)
+    A="$LOCAL"
+    say "2/8 Folosesc arhiva locala: $A"
+    [ -r "$A" ] || die "nu pot citi fisierul $A."
+    say "    marime: $(( $(stat -c %s "$A") / 1024 / 1024 )) MB"
+    if [ -z "$SHA" ] && [ -f "$A.sha256" ]; then
+      SHA=$(awk 'NR==1{print tolower($1)}' "$A.sha256")
+      [[ "$SHA" =~ ^[0-9a-f]{64}$ ]] || die "fisierul $A.sha256 nu are formatul asteptat ('<suma>  <nume>')."
+      say "    suma sha256 luata din $A.sha256"
+    fi
+  else
+    say "2/8 Descarc arhiva (cu reincercari)..."
+    local n ok=0
+    for n in 1 2 3 4 5; do
+      rm -f "$A"
+      if curl -fL -sS --retry 3 --retry-delay 5 --connect-timeout 30 -o "$A" "$URL"; then ok=1; break; fi
+      warn "descarcarea a esuat (incercarea $n/5)"; sleep 10
+    done
+    [ "$ok" = 1 ] || die "nu am putut descarca arhiva. Linkul poate fi expirat: cere unul nou pe Slack."
+    say "    descarcat: $(( $(stat -c %s "$A") / 1024 / 1024 )) MB"
+  fi
 
   # ---------- 2. verificare ----------
   say "3/8 Verific arhiva..."
@@ -99,7 +127,7 @@ main() {
     [ "$(sha256sum "$A" | cut -d' ' -f1)" = "$SHA" ] || die "suma sha256 nu corespunde (arhiva alterata sau incompleta)."
     say "    sha256 OK"
   else
-    warn "nu ai dat suma sha256; verific doar ca arhiva se poate citi"
+    warn "nu am suma sha256 (nici argument, nici fisier .sha256 vecin); verific doar ca arhiva se poate citi"
   fi
   zstd -t -q "$A" || die "arhiva nu e un fisier zstd valid (linkul expirat intoarce de obicei o pagina de eroare)."
   zstd -dc "$A" | tar -tf - >"$W/lista.txt" || die "arhiva tar este corupta."
