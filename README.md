@@ -16,8 +16,16 @@ Repo-ul contine doar scriptul de restaurare, fara secrete. Arhiva cu programele 
    - La *Editare setari*: hostname `rpi4`, utilizator `pi` + parola, fus orar, **SSH activat**.
 2. **Porneste Pi-ul**: pune cardul, conecteaza cablul Ethernet, da curent. Asteapta 2-3 minute
    (la prima pornire se reporneste singur o data).
-3. **Cere linkul** pe Slack, agentului (de exemplu pe #proj-biserica-audio):
-   *da-mi linkul de restaurare pentru rpi4*. Primesti o comanda completa, gata de lipit.
+3. **Cere linkul** pe Slack, oricarui agent, intr-un chat nou (de exemplu pe #agent-server sau
+   #proj-biserica-audio, ori in mesaj direct catre bot):
+
+   > *da-mi linkul de restaurare pentru rpi4*
+
+   Agentul ruleaza generatorul de link (`rpi4-link.sh`) si iti da o comanda completa, gata de lipit,
+   cu linkul si suma sha256. Linkul e valabil 12 ore (poti cere alta durata, de exemplu *pe 48 de ore*,
+   maxim 7 zile). Daca agentul nu stie ce sa faca, spune-i:
+   *ruleaza `sh /volume1/agents/_shared/bin/rpi4-link.sh 12` si da-mi comanda*.
+   Pentru o arhiva mai veche decat ultima: *linkul pentru arhiva din YYYYMMDD* (se pastreaza ultimele 6, saptamanal).
 4. **Conecteaza-te** la Pi (`ssh pi@rpi4.local` sau tastatura + monitor, Terminal) si **lipeste comanda**:
 
    ```bash
